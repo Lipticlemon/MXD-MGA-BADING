@@ -1,0 +1,20 @@
+name = "mxd"
+main = "worker/index.js"
+compatibility_date = "2026-10-01"
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+[[d1_databases]]
+binding = "DB"
+database_name = "mxd-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "db"
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "mxd-media"
+[vars]
+# ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
+# ACCESS_AUD = "Cloudflare Access application AUD tag"
+# ALLOWED_ADMIN_EMAIL = "you@example.com"
+# ADMIN_HOST = "admin.example.com"
