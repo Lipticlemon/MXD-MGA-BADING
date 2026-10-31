@@ -53,7 +53,7 @@ export default function PublicSite({
     [formStatus, setFormStatus] = useState(""),
     [submitting, setSubmitting] = useState(false);
   const th = d.theme,
-    t = (id: string | undefined) => (id ? d.texts[id] || id : ""),
+    t = (id: string | undefined) => (id ? (d.texts[id] ?? "") : ""),
     u = (key: string) => t(d.ui[key]);
   const page = d.pages.find((p) => p.id === pageId) || d.pages[0];
   const event = (kind: string, target: string) => {
