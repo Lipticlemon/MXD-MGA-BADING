@@ -5,6 +5,8 @@ declare namespace Cloudflare {
     DEPLOY_TARGET?:string;
     MODE?:string;
     ADMIN_KEY_HASH?:string;
+    STRIPE_SECRET_KEY?:string;
+    STRIPE_WEBHOOK_SECRET?:string;
     BUCKET?: R2Bucket;
   }
 }

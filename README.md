@@ -1,57 +1,56 @@
 # MXD
 
-A midnight-purple public renderer and ADMIN PANEL built with React, TypeScript, Vinext and Cloudflare D1/R2. The public renderer and draft preview share one typed content model. All seeded public copy uses sequential `textN` placeholders.
+A midnight-purple website and separate **ADMIN PANEL**, built with React, TypeScript, Vinext, Cloudflare Workers, D1 and R2. Public pages and responsive draft previews use the same typed renderer. Existing numbered `textN` content IDs survive upgrades.
 
-## Current delivery
+## Delivered features
 
-- Public page at `/`; protected editor at `/admin`.
-- Text search/editing; section add/remove/duplicate/reorder/visibility; item editing and ordering.
-- Theme colors, font, scale, container width, radius, section spacing and columns.
-- Course, pricing, FAQ and curriculum sections use editable entries. Prices are numeric PHP values; checkout is not implemented.
-- Draft autosave, explicit save, preview, publish, undo/redo and persistent snapshot restoration.
-- Named theme presets, content backup export/import, maintenance and SEO settings.
-- PNG/JPEG/WebP uploads stored in R2, with reusable media URLs. Media is retained for revision recovery.
-- Server input validation, parameterized SQL, optimistic concurrency and atomic snapshot/content writes.
+- Visual page editor with structure, live preview and contextual properties; click to select, drag to reorder, accessible ordering buttons, section templates, reusable blocks and independent duplication.
+- Multiple pages, navigation, visibility, desktop/tablet/mobile appearance overrides, safe formatted text, searchable text labels and validated bulk import/export.
+- Theme controls and named presets, including import/export and preview. Presets preserve text, courses and commercial data.
+- Courses with modules, lessons, visibility, numeric prices, scheduled promotions, countdowns, manual enrollment and external enrollment links.
+- Enrollment inbox with manual payment confirmation. Stripe Checkout and verified webhook integration are implemented; **Stripe is disabled until provider secrets and webhook configuration are supplied**. An unconfigured provider returns an explicit error and never claims payment succeeded.
+- PNG/JPEG/WebP/GIF, video and audio media; folders, search, usage checks, presentation crop/focal controls, immutable draft replacement, recoverable trash and version recovery. SVG uploads are rasterized to PNG in the browser; raw executable SVG/HTML is rejected by the server.
+- Scheduled banners/popups, maintenance controls, page metadata, social images, favicon, canonical URLs, redirects, robots and sitemap.
+- Optional real visitor/click analytics, disabled by default, with retention and privacy signals respected. No fabricated statistics or testimonials.
+- Snapshot-aware autosave, explicit drafts, undo/redo, atomic publication, conflict detection, paginated revision history, revision preview and draft restoration.
+- Owner-only backup creation/download, daily database snapshots in R2, audit history and session revocation. Media objects remain immutable and retained for recovery.
 
-## Production hosting and authorization
+## Live deployment
 
-MXD now has independent Cloudflare Workers deployments for the website and ADMIN PANEL, sharing D1 and R2. See [deploy/README.md](deploy/README.md) for live addresses and operations.
+- [Website](https://mxd.digital-world-9896a4.workers.dev/)
+- [ADMIN PANEL login](https://mxd-admin.digital-world-9896a4.workers.dev/login)
 
-The admin uses a generated high-entropy access key with expiring server-side sessions, logout revocation and login attempt limits. API membership checks fail closed. The public Worker rejects all administrative routes and mutations. Direct requests cannot forge the internal platform identity headers. The earlier owner-private Sites deployment remains an independent preview with its own database; it is not the Cloudflare production data source.
+The two Workers share D1 and R2. The public Worker rejects administrative routes. A random access key creates an expiring server-side admin session; secrets never enter public content or Git. See [deployment and recovery operations](deploy/README.md).
+
+The earlier owner-private Sites preview is independent of Cloudflare production data.
 
 ## Development
 
-Use Node 24 and the committed pnpm lockfile. Install with `corepack pnpm install --frozen-lockfile` (or the Sites dependency installer in managed environments).
+Use Node 24 and the committed pnpm lockfile.
 
 ```sh
-npm run db:generate
+corepack pnpm install --frozen-lockfile
 npm run typecheck
 npm test
 npm run build
 ```
 
-For local D1, build once, then apply the migration:
+For local D1, apply migrations `0000` through `0003` in order using Wrangler against the local database before testing. Start development with `npm run dev`. `tests/workflow.mjs` is a local-only integration harness; its test identity headers are not trusted by Cloudflare production.
 
-```sh
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_wakeful_avengers.sql
-```
-
-Start development with `npm run dev`. The managed preview uses `sites-preview start PATH`. Platform sign-in is available on deployed Sites; the managed local preview does not emulate it. `tests/workflow.mjs` is a local-only API integration harness requiring a reachable preview and local test identity headers. It is not a production authentication bypass.
-
-`.openai/hosting.json` declares the Sites project and `DB`/`BUCKET` bindings. Sites provisions these resources and applies generated migrations on deployment. Do not commit runtime secrets or state. The `oai-authenticated-*` identity headers must be supplied only by trusted Sites dispatch; a direct unprotected Worker deployment would not have that boundary.
-
-## Recovery
-
-Before publication, the current published document is saved as a revision. Draft saves also snapshot the preceding draft. Restoring a revision changes the draft only; explicitly publish to affect the website. Conflict responses preserve local edits; export them before reloading. History shows the latest 100 revisions, while the database retains older records.
-
-Export content from Versions or Settings. Import validates the entire document and restores to draft. Theme presets are included. Content exports do not include media bytes; R2 and D1 need independent provider backups before public launch. Retained media URLs preserve revision references. No automatic disaster recovery or media deletion UI is claimed.
+`npm run db:generate` generates new migrations after schema changes. Never replay already applied SQL against production. Do not commit runtime state, output bundles, credentials or environment secrets.
 
 ## Verification
 
-Eleven automated tests cover sequential text IDs, unsafe URLs, invalid references, duplicate sections, unsafe theme values, draft/published isolation, persistent restore, stale-writer rejection, and atomic rollback on failed database writes. TypeScript checks and the production build pass. The public page was inspected in managed browser preview. The Cloudflare public page and separate admin login were verified in the browser. Authentication is tested with SQLite-backed integration fixtures. Live API checks also verified sign-in, draft isolation, publishing to the public host, restoration, republication, and logout revocation.
+Automated tests cover legacy upgrades, stable text IDs, independent duplication, preset isolation, validated styles/URLs/pages, authoritative promotion prices, bounded request streams, upload signatures, webhook authentication, payment matching, owner authorization, login/origin/session protection, draft isolation, restoration, stale writers and transaction rollback.
 
-## Remaining specification work
+`tests/full-stack-live.mjs` runs against disposable `mxd-qa` deployments only and reads a test key from standard input. It exercises real D1/R2 publication, pages, nested courses, media replacement/recovery, enrollment, analytics, backup and restoration. It deliberately refuses production hosts. Live card charges require a separate Stripe test-mode acceptance check after configuration.
 
-This is an initial functional implementation, not the complete 32-section specification. Still pending: multi-admin roles and permissions; page-level drag-and-drop; nested course modules/lessons; arbitrary component style/responsive overrides; video/audio uploads; enrollment/payment integrations; promotions/countdowns; banners/popups; analytics; richer media management; full SEO/social/sitemap controls; managed backups; broader rate limits and CSP hardening; mobile/accessibility and authenticated end-to-end browser coverage.
+## Editing and recovery
 
-Do not treat these as completed features or expose the admin to the public before authorization is extended.
+Save changes to a draft, inspect Preview, then Publish to update the website. A failed or conflicting save retains local edits; export them before reloading. Revision restoration modifies the draft, requiring a separate publication. Media replacement creates a new URL so an unpublished replacement cannot alter the live website.
+
+Content exports contain content and configuration, not media bytes or credentials. Scheduled backups additionally include revisions, media metadata, enrollments and audit records. Full account-loss recovery requires the retained R2 objects or a separate bucket copy, plus restoration of the database snapshot; see the operations guide.
+
+## Configuration still required
+
+Replace numbered public copy and upload your actual media. Enable analytics or enrollment only when desired. For card payments, configure your own Stripe account, secrets and signed webhook endpoint, then complete test-mode checkout before enabling live payments. Optional additional administrators/roles and custom domains are not provisioned by this release.

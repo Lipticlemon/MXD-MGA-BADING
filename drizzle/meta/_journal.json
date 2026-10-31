@@ -15,6 +15,20 @@
       "when": 1793437884008,
       "tag": "0001_curved_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793440347920,
+      "tag": "0002_faulty_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1793440967682,
+      "tag": "0003_salty_naoko",
+      "breakpoints": true
     }
   ]
 }

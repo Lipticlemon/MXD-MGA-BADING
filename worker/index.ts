@@ -1,11 +1,27 @@
-import {cloudflareGate} from '../lib/cloudflare-auth';
+import { createBackup } from "../lib/backup";
+import { cloudflareGate } from "../lib/cloudflare-auth";
 import handler from "vinext/server/fetch-handler";
 import { runWithConnectorBinding } from "../lib/connector-context";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
 const worker = {
-  async fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
-    if(env.DEPLOY_TARGET === 'cloudflare'){const gate=await cloudflareGate(request,env);if(gate.response)return gate.response;request=gate.request;}
+  async scheduled(
+    event: ScheduledController,
+    env: Cloudflare.Env,
+    ctx: ExecutionContext,
+  ) {
+    if (env.MODE === "admin") ctx.waitUntil(createBackup(env));
+  },
+  async fetch(
+    request: Request,
+    env: Cloudflare.Env,
+    ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>,
+  ) {
+    if (env.DEPLOY_TARGET === "cloudflare") {
+      const gate = await cloudflareGate(request, env);
+      if (gate.response) return gate.response;
+      request = gate.request;
+    }
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
     // the auxiliary service binding are absent from production builds.
@@ -14,24 +30,39 @@ const worker = {
       const expiresAt = Date.now() + 60_000;
       binding = {
         async getContext() {
-          if (Date.now() >= expiresAt) return { status: "request_context_expired" };
+          if (Date.now() >= expiresAt)
+            return { status: "request_context_expired" };
           return preview.getContext?.() ?? { status: "binding_unavailable" };
         },
         async invoke(connectorId, actionName, args) {
           if (Date.now() >= expiresAt) {
-            return { status: "request_context_expired", message: "This request has expired. Please try again." };
+            return {
+              status: "request_context_expired",
+              message: "This request has expired. Please try again.",
+            };
           }
           return preview.invoke(connectorId, actionName, args);
         },
       };
     }
-    const response = await runWithConnectorBinding(binding, () => handler.fetch(request, env, ctx));
+    const response = await runWithConnectorBinding(binding, () =>
+      handler.fetch(request, env, ctx),
+    );
     const secured = new Response(response.body, response);
-    secured.headers.set('X-Content-Type-Options', 'nosniff');
-    secured.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-    secured.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    secured.headers.set('X-Frame-Options', 'SAMEORIGIN');
-    if (new URL(request.url).pathname.startsWith('/api/manage')) secured.headers.set('Cache-Control', 'no-store');
+    secured.headers.set("X-Content-Type-Options", "nosniff");
+    secured.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+    secured.headers.set(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=()",
+    );
+    secured.headers.set("X-Frame-Options", "SAMEORIGIN");
+    secured.headers.set("Strict-Transport-Security", "max-age=31536000");
+    secured.headers.set(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'",
+    );
+    if (new URL(request.url).pathname.startsWith("/api/manage"))
+      secured.headers.set("Cache-Control", "no-store");
     return secured;
   },
 };

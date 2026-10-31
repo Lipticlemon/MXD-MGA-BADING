@@ -1,35 +1,345 @@
-'use client';
-import {useState,useEffect,useRef} from 'react';
-import {initialContent,newText,section as sectionSchema,type Content} from '../lib/content';
-import PublicSite from './public-site';
-type Revision={id:string,created:string,kind:string};
-const tabs=['Overview','Text & Labels','Sections','Design','Media','Presets','Versions','Settings'];
-export default function Admin({cloudflare=false}:{cloudflare?:boolean}){
-const [doc,setDoc]=useState<Content|null>(null),[version,setVersion]=useState(0),[tab,setTab]=useState('Overview'),[status,setStatus]=useState('Loading'),[busy,setBusy]=useState(false),[search,setSearch]=useState(''),[selected,setSelected]=useState('hero'),[preview,setPreview]=useState(false),[viewport,setViewport]=useState('100%'),[revisions,setRevisions]=useState<Revision[]>([]),[media,setMedia]=useState<{id:string,name:string}[]>([]),[presetName,setPresetName]=useState(''),[dirty,setDirty]=useState(false);
-const undo=useRef<Content[]>([]),redo=useRef<Content[]>([]),requestBusy=useRef(false),latest=useRef<Content|null>(null),blocked=useRef(false);latest.current=doc;
-async function refresh(){const r=await fetch('/api/manage');const data=await r.json() as {error?:string,draft:Content,version:number,revisions:Revision[],id:string};if(!r.ok)throw Error(data.error||'Request failed');setDoc(data.draft);setVersion(data.version);setRevisions(data.revisions);setStatus('Saved');setDirty(false);blocked.current=false}
-useEffect(()=>{refresh().catch(e=>setStatus(e.message))},[]);
-useEffect(()=>{if(tab==='Media')fetch('/api/media').then(r=>r.json()).then(v=>Array.isArray(v)&&setMedia(v)).catch(()=>setStatus('Unable to load media'))},[tab]);
-function change(fn:(d:Content)=>void){if(!doc||requestBusy.current)return;undo.current.push(structuredClone(doc));undo.current=undo.current.slice(-50);redo.current=[];const next=structuredClone(doc);fn(next);setDoc(next);setDirty(true);setStatus('Unsaved')}
-async function save(action='save',revision?:string){if(!doc||requestBusy.current||blocked.current)return;requestBusy.current=true;setBusy(true);setStatus(action==='publish'?'Publishing…':'Saving…');const savedDoc=doc;try{const r=await fetch('/api/manage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,version,document:doc,revision})});const data=await r.json() as {error?:string,draft:Content,version:number,revisions:Revision[],id:string};if(!r.ok){if(r.status===409)blocked.current=true;throw Error(data.error||'Request failed')}setVersion(data.version);setDirty(false);setStatus(action==='publish'?'Published':action==='restore'?'Restored to draft':'Saved');if(action==='restore'){await refresh();setStatus('Restored to draft. Publish to apply.')}else{const r2=await fetch('/api/manage');if(r2.ok)setRevisions(((await r2.json()) as {revisions:Revision[]}).revisions)}}catch(e){setStatus(e instanceof Error?e.message:'Save failed')}finally{requestBusy.current=false;setBusy(false)}}
-useEffect(()=>{if(!dirty||busy||blocked.current)return;const id=setTimeout(()=>save(),1800);return()=>clearTimeout(id)},[doc,dirty,busy]);
-useEffect(()=>{const fn=(e:BeforeUnloadEvent)=>{if(dirty){e.preventDefault();e.returnValue=''}};window.addEventListener('beforeunload',fn);return()=>window.removeEventListener('beforeunload',fn)},[dirty]);
-function travel(back:boolean){if(!doc||busy)return;const source=back?undo.current:redo.current,target=back?redo.current:undo.current;const next=source.pop();if(next){target.push(doc);setDoc(next);setDirty(true)}}
-function exportDoc(){if(!doc)return;const url=URL.createObjectURL(new Blob([JSON.stringify(doc,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='mxd-content-backup.json';a.click();URL.revokeObjectURL(url)}
-if(!doc)return <main className="loading"><h1>ADMIN PANEL</h1><p role="status">{status}</p><button onClick={()=>refresh().catch(e=>setStatus(e.message))}>Retry</button></main>;
-const current=doc.sections.find(s=>s.id===selected);
-const textField=(label:string,id:string)=><label className="field" key={id}>{label}<small>{id}</small><textarea value={doc.texts[id]} onChange={e=>change(d=>{d.texts[id]=e.target.value})}/></label>;
-function sectionChange(fn:(s:Content['sections'][number],d:Content)=>void){change(d=>{const s=d.sections.find(s=>s.id===selected);if(s)fn(s,d)})}
-return <div className="admin"><aside className="admin-sidebar"><a href="/admin" className="admin-brand"><span>✳</span> ADMIN PANEL</a><div className="workspace-label">WORKSPACE</div><nav>{tabs.map((name,i)=><button key={name} className={tab===name?'active':''} onClick={()=>setTab(name)}><span aria-hidden>{['◫','T','▤','◈','▧','◉','↶','⚙'][i]}</span>{name}</button>)}</nav><div className="sidebar-bottom"><a href="/" target="_blank" rel="noreferrer">Open website ↗</a>{cloudflare?<form action="/logout" method="POST"><button type="submit">Sign out ↗</button></form>:<a href="/signout-with-chatgpt?return_to=/admin" target="_top">Sign out ↗</a>}</div></aside><div className="admin-main"><header className="admin-top"><div><span className="status-dot"/><output aria-live="polite">{status}</output></div><div className="toolbar"><button disabled={busy||!undo.current.length} onClick={()=>travel(true)} aria-label="Undo">↶</button><button disabled={busy||!redo.current.length} onClick={()=>travel(false)} aria-label="Redo">↷</button><button onClick={()=>setPreview(!preview)}>{preview?'Editor':'Preview'}</button><button disabled={busy} onClick={()=>save()}>Save draft</button><button className="primary" disabled={busy} onClick={()=>save('publish')}>Publish ↗</button></div></header><div className="admin-content"><div className="page-heading"><div><span className="workspace-label">MXD / {preview?'PREVIEW':tab.toUpperCase()}</span><h1>{preview?'Live preview':tab}</h1></div><span className="draft-pill">Draft · v{version}</span></div>
-{preview?<><div className="viewport-buttons">{['100%','768px','390px'].map(w=><button key={w} onClick={()=>setViewport(w)}>{w==='100%'?'Desktop':w==='768px'?'Tablet':'Mobile'}</button>)}</div><div className="preview-frame" style={{width:viewport}}><PublicSite document={doc} select={id=>{setSelected(id);setPreview(false);setTab('Sections')}}/></div></>:
-<fieldset disabled={busy} className="editor-fields">
-{tab==='Overview'&&<><div className="overview-intro"><div className="eyebrow">CONTENT WORKSPACE</div><h2>Your website.<br/><span>Your control.</span></h2><p>Edit the draft, preview your changes, then publish.</p><button className="primary" onClick={()=>setTab('Text & Labels')}>Edit content ↗</button></div><div className="overview-grid">{[['Text & Labels',`${Object.keys(doc.texts).length} text entries`],['Sections',`${doc.sections.filter(s=>s.visible).length} visible sections`],['Design','Theme & layout'],['Versions',`${revisions.length} recent revisions`]].map(([name,value])=><button className="overview-card" key={name} onClick={()=>setTab(name)}><span>{name} ↗</span><strong>{value}</strong></button>)}</div><div className="admin-panel"><h2>Before you publish</h2><p>Replace numbered placeholders. Add authentic media. Verify links and pricing.</p><p>Changes appear on the website after publishing.</p></div></>}
-{tab==='Text & Labels'&&<><input className="search" aria-label="Search text" placeholder="Search ID or text…" value={search} onChange={e=>setSearch(e.target.value)}/><div className="text-grid">{Object.entries(doc.texts).filter(([k,v])=>(k+' '+v).toLowerCase().includes(search.toLowerCase())).map(([k])=>textField(k,k))}</div></>}
-{tab==='Sections'&&<div className="section-editor"><div className="section-list">{doc.sections.map((s,i)=><div key={s.id} className={selected===s.id?'selected':''}><button onClick={()=>setSelected(s.id)}>{s.type}<small>{s.visible?'Visible':'Hidden'}</small></button><button aria-label={`Move ${s.type} up`} disabled={!i} onClick={()=>change(d=>{[d.sections[i-1],d.sections[i]]=[d.sections[i],d.sections[i-1]]})}>↑</button><button aria-label={`Move ${s.type} down`} disabled={i===doc.sections.length-1} onClick={()=>change(d=>{[d.sections[i+1],d.sections[i]]=[d.sections[i],d.sections[i+1]]})}>↓</button></div>)}<label className="field">Add section<select value="" onChange={e=>{const type=e.target.value as Content['sections'][number]['type'];change(d=>{d.sections.push({id:`${type}-${crypto.randomUUID()}`,type,title:newText(d),body:newText(d),label:newText(d),url:'#courses',visible:true,layout:'grid',padding:96,columns:3,items:[]})})}}><option value="">Choose type</option>{sectionSchema.shape.type.options.map(t=><option key={t}>{t}</option>)}</select></label></div>{current&&<div className="admin-panel"><div className="toolbar"><label><input type="checkbox" checked={current.visible} onChange={e=>sectionChange(s=>{s.visible=e.target.checked})}/> Visible</label><button onClick={()=>change(d=>{const copy=structuredClone(current);copy.id=crypto.randomUUID();for(const key of ['title','body','label'] as const){const id=newText(d);d.texts[id]=d.texts[copy[key]];copy[key]=id}copy.items=copy.items.map(item=>{const copy={...item,id:crypto.randomUUID()};for(const key of ['title','body','label','alt'] as const){const id=newText(d);d.texts[id]=d.texts[copy[key]];copy[key]=id}return copy});d.sections.push(copy)})}>Duplicate</button><button onClick={()=>change(d=>{d.sections=d.sections.filter(s=>s.id!==selected)})}>Remove</button></div>{textField('Heading',current.title)}{textField('Description',current.body)}{textField('Label / button',current.label)}<label className="field">Link<input value={current.url} onChange={e=>sectionChange(s=>{s.url=e.target.value})}/></label><div className="two-cols"><label className="field">Layout<select value={current.layout} onChange={e=>sectionChange(s=>{s.layout=e.target.value as typeof s.layout})}>{['split','center','grid','list'].map(x=><option key={x}>{x}</option>)}</select></label><label className="field">Columns<input type="number" min="1" max="4" value={current.columns} onChange={e=>sectionChange(s=>{s.columns=Number(e.target.value)})}/></label><label className="field">Section padding<input type="number" min="16" max="200" value={current.padding} onChange={e=>sectionChange(s=>{s.padding=Number(e.target.value)})}/></label></div><h3>Entries</h3>{current.items.map((item,index)=><div className="entry" key={item.id}><div className="toolbar"><label><input type="checkbox" checked={item.visible} onChange={e=>sectionChange(s=>{s.items[index].visible=e.target.checked})}/>Visible</label><button disabled={!index} onClick={()=>sectionChange(s=>{[s.items[index-1],s.items[index]]=[s.items[index],s.items[index-1]]})}>↑</button><button disabled={index===current.items.length-1} onClick={()=>sectionChange(s=>{[s.items[index+1],s.items[index]]=[s.items[index],s.items[index+1]]})}>↓</button><button onClick={()=>sectionChange(s=>{s.items.splice(index,1)})}>Remove</button></div>{textField('Title',item.title)}{textField('Body',item.body)}{textField('Button',item.label)}{textField('Image description',item.alt)}{(['url','media'] as const).map(k=><label className="field" key={k}>{k==='url'?'Link':'Image URL'}<input value={item[k]} onChange={e=>sectionChange(s=>{s.items[index][k]=e.target.value})}/></label>)}{current.type==='pricing'&&<label className="field">Price (PHP)<input type="number" min="0" value={item.price??''} onChange={e=>sectionChange(s=>{s.items[index].price=e.target.value===''?null:Number(e.target.value)})}/></label>}</div>)}<button onClick={()=>sectionChange((s,d)=>{s.items.push({id:crypto.randomUUID(),title:newText(d),body:newText(d),label:newText(d),alt:newText(d),url:'#pricing',media:'',price:null,visible:true})})}>Add entry +</button></div>}</div>}
-{tab==='Design'&&<div className="admin-panel"><h2>Global theme</h2><div className="two-cols">{(['background','surface','accent','text','muted','border'] as const).map(key=><label className="field" key={key}>{key}<div className="color-field"><input type="color" value={doc.theme[key]} onChange={e=>change(d=>{d.theme[key]=e.target.value})}/><code>{doc.theme[key]}</code></div></label>)}{(['radius','width','scale'] as const).map(key=><label className="field" key={key}>{key}<input type="number" step={key==='scale'?'.05':'1'} value={doc.theme[key]} onChange={e=>change(d=>{d.theme[key]=Number(e.target.value)})}/></label>)}<label className="field">Font<select value={doc.theme.font} onChange={e=>change(d=>{d.theme.font=e.target.value as Content['theme']['font']})}>{['Inter','Georgia','system-ui'].map(x=><option key={x}>{x}</option>)}</select></label></div><label><input type="checkbox" checked={doc.theme.motion} onChange={e=>change(d=>{d.theme.motion=e.target.checked})}/> Animations</label><button onClick={()=>change(d=>{d.theme=initialContent().theme})}>Reset theme</button></div>}
-{tab==='Media'&&<div className="admin-panel"><h2>Media library</h2><p>PNG, JPEG or WebP · maximum 20 MB. Files remain stored for revision recovery.</p><input aria-label="Upload media" type="file" accept="image/png,image/jpeg,image/webp" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const form=new FormData();form.set('file',file);setStatus('Uploading…');try{const r=await fetch('/api/media',{method:'POST',body:form});if(!r.ok)throw Error(await r.text());const data=await r.json() as {error?:string,draft:Content,version:number,revisions:Revision[],id:string};setMedia(m=>[{id:data.id,name:file.name},...m]);setStatus('Uploaded')}catch(e){setStatus(e instanceof Error?e.message:'Upload failed')}}}/><div className="media-grid">{media.map(m=><div key={m.id}><img src={`/api/media/${m.id}`} alt={m.name}/><p>{m.name}</p><input aria-label="Media URL" readOnly value={`/api/media/${m.id}`} onFocus={e=>e.target.select()}/></div>)}</div></div>}
-{tab==='Presets'&&<div className="admin-panel"><h2>Design presets</h2><div className="toolbar"><input aria-label="Preset name" placeholder="Preset name" value={presetName} onChange={e=>setPresetName(e.target.value)}/><button disabled={!presetName.trim()} onClick={()=>{change(d=>{d.presets.push({id:crypto.randomUUID(),name:presetName.trim(),theme:structuredClone(d.theme)})});setPresetName('')}}>Save current theme</button></div>{doc.presets.map(p=><div className="preset-row" key={p.id}><input aria-label="Preset name" value={p.name} onChange={e=>change(d=>{d.presets.find(x=>x.id===p.id)!.name=e.target.value})}/><button onClick={()=>change(d=>{d.theme=structuredClone(p.theme)})}>Apply</button><button onClick={()=>change(d=>{d.presets=d.presets.filter(x=>x.id!==p.id)})}>Remove</button></div>)}</div>}
-{tab==='Versions'&&<div className="admin-panel"><div className="toolbar"><h2>Version history</h2><button onClick={exportDoc}>Export content backup</button></div><p>Restore loads a snapshot into the draft. Publish when ready.</p>{revisions.map(r=><div className="revision" key={r.id}><div><strong>{r.kind}</strong><small>{new Date(r.created).toLocaleString()}</small></div><button onClick={()=>save('restore',r.id)}>Restore to draft</button></div>)}</div>}
-{tab==='Settings'&&<div className="admin-panel">{textField('Site name',doc.brand)}{textField('Footer',doc.footer)}<h2>Navigation</h2>{doc.nav.map((n,index)=><div className="entry" key={n.id}>{textField('Label',n.label)}<label className="field">Link<input value={n.url} onChange={e=>change(d=>{d.nav[index].url=e.target.value})}/></label><button onClick={()=>change(d=>{d.nav.splice(index,1)})}>Remove</button></div>)}<button onClick={()=>change(d=>{d.nav.push({id:crypto.randomUUID(),label:newText(d),url:'#courses'})})}>Add link</button><h2>SEO</h2>{textField('Page title',doc.seo.title)}{textField('Description',doc.seo.description)}<h2>Maintenance</h2><label><input type="checkbox" checked={doc.maintenance.enabled} onChange={e=>change(d=>{d.maintenance.enabled=e.target.checked})}/> Enable maintenance</label>{textField('Title',doc.maintenance.title)}{textField('Message',doc.maintenance.body)}<label className="field">Reopening (local time)<input type="datetime-local" value={doc.maintenance.reopen?new Date(new Date(doc.maintenance.reopen).getTime()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):''} onChange={e=>change(d=>{d.maintenance.reopen=e.target.value?new Date(e.target.value).toISOString():''})}/></label><h2>Recovery</h2><button onClick={exportDoc}>Export content backup</button><label className="field">Import backup to draft<input type="file" accept="application/json" onChange={async e=>{const f=e.target.files?.[0];if(!f)return;try{const {contentSchema}=await import('../lib/content');const parsed=contentSchema.parse(JSON.parse(await f.text()));change(d=>Object.assign(d,parsed));setStatus('Imported to draft')}catch{setStatus('Invalid backup')}}}/></label></div>}
-</fieldset>}
-</div></div></div>}
+"use client";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { upgradeContent, type Content } from "../lib/content";
+import { EditorContext, download } from "./editor-context";
+import PreviewFrame from "./preview-frame";
+import {
+  PagesPanel,
+  TextsPanel,
+  DesignPanel,
+  SettingsPanel,
+  OverviewPanel,
+} from "./editor-panels";
+import {
+  CoursesPanel,
+  MediaPanel,
+  EnrollmentsPanel,
+  AnalyticsPanel,
+  VersionsPanel,
+} from "./management-panels";
+export default function Admin({
+  cloudflare = false,
+}: {
+  cloudflare?: boolean;
+}) {
+  const [doc, setDoc] = useState<Content | null>(null),
+    [published, setPublished] = useState<Content | null>(null),
+    [tab, setTab] = useState("Overview"),
+    [status, setStatus] = useState("Loading"),
+    [busy, setBusy] = useState(false),
+    [dirty, setDirty] = useState(false),
+    [selected, setSelected] = useState("hero"),
+    [page, setPage] = useState("home"),
+    [preview, setPreview] = useState<Content | null>(null),
+    [width, setWidth] = useState("100%");
+  const version = useRef(0),
+    latest = useRef<Content | null>(null),
+    saved = useRef(""),
+    inflight = useRef(false),
+    conflict = useRef(false),
+    failed = useRef(""),
+    history = useRef<Content[]>([]),
+    future = useRef<Content[]>([]);
+  latest.current = doc;
+  const refresh = useCallback(async () => {
+    const r = await fetch("/api/manage");
+    const data = (await r.json()) as {
+      draft: unknown;
+      published: unknown;
+      version: number;
+      error?: string;
+    };
+    if (!r.ok) throw Error(data.error || "Unable to load");
+    const d = upgradeContent(data.draft);
+    saved.current = JSON.stringify(d);
+    latest.current = d;
+    version.current = data.version;
+    setDoc(d);
+    setPublished(upgradeContent(data.published));
+    setDirty(false);
+    setStatus("Saved");
+    conflict.current = false;
+    failed.current = "";
+  }, []);
+  useEffect(() => {
+    refresh().catch((e) => setStatus(e.message));
+  }, [refresh]);
+  function change(fn: (d: Content) => void) {
+    const current = latest.current;
+    if (!current) return;
+    history.current.push(structuredClone(current));
+    history.current = history.current.slice(-80);
+    future.current = [];
+    const next = structuredClone(current);
+    fn(next);
+    latest.current = next;
+    setDoc(next);
+    setDirty(true);
+    setStatus("Unsaved");
+    failed.current = "";
+  }
+  async function save(action = "save", revision?: string, auto = false) {
+    const snapshot = latest.current;
+    if (!snapshot || inflight.current || conflict.current) return;
+    const serialized = JSON.stringify(snapshot);
+    if (auto && failed.current === serialized) return;
+    inflight.current = true;
+    setBusy(true);
+    setStatus(action === "publish" ? "Publishing…" : "Saving…");
+    try {
+      const r = await fetch("/api/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          version: version.current,
+          document: snapshot,
+          revision,
+        }),
+      });
+      const data = (await r.json()) as { version: number; error?: string };
+      if (!r.ok) {
+        if (r.status === 409) conflict.current = true;
+        throw Error(data.error || "Save failed");
+      }
+      version.current = data.version;
+      saved.current = serialized;
+      const changed = JSON.stringify(latest.current) !== serialized;
+      setDirty(changed);
+      setStatus(
+        changed ? "Unsaved" : action === "publish" ? "Published" : "Saved",
+      );
+      if (action === "publish") setPublished(snapshot);
+      if (action === "restore" || action === "discard") {
+        history.current.push(snapshot);
+        await refresh();
+        setStatus(
+          action === "restore"
+            ? "Restored to draft. Publish to apply."
+            : "Published content restored to draft.",
+        );
+      }
+    } catch (e) {
+      failed.current = serialized;
+      setStatus(e instanceof Error ? e.message : "Unable to save");
+    } finally {
+      inflight.current = false;
+      setBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (!dirty || busy || conflict.current) return;
+    const id = setTimeout(() => save("save", undefined, true), 1500);
+    return () => clearTimeout(id);
+  }, [doc, dirty, busy]);
+  useEffect(() => {
+    const fn = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", fn);
+    return () => window.removeEventListener("beforeunload", fn);
+  }, [dirty]);
+  function travel(back: boolean) {
+    const current = latest.current;
+    if (!current) return;
+    const source = back ? history.current : future.current,
+      target = back ? future.current : history.current;
+    const next = source.pop();
+    if (next) {
+      target.push(current);
+      latest.current = next;
+      setDoc(next);
+      setDirty(JSON.stringify(next) !== saved.current);
+      setStatus("Unsaved");
+    }
+  }
+  if (!doc || !published)
+    return (
+      <main className="loading">
+        <h1>ADMIN PANEL</h1>
+        <p role="status">{status}</p>
+        <button onClick={() => refresh().catch((e) => setStatus(e.message))}>
+          Retry
+        </button>
+      </main>
+    );
+  const value = {
+    doc,
+    change,
+    selected,
+    setSelected,
+    page,
+    setPage,
+    setTab,
+    status: setStatus,
+    save: (a?: string, r?: string) => save(a, r),
+    previewDocument: setPreview,
+    published,
+    refresh,
+  };
+  return (
+    <EditorContext value={value}>
+      <div className="admin">
+        <aside className="admin-sidebar">
+          <a href="/admin" className="admin-brand">
+            <span aria-hidden>✳</span>ADMIN PANEL
+          </a>
+          <div className="workspace-label">WORKSPACE</div>
+          <nav>
+            {[
+              "Overview",
+              "Pages",
+              "Text & Labels",
+              "Design",
+              "Media",
+              "Courses",
+              "Enrollments",
+              "Analytics",
+              "Settings",
+            ].map((name, i) => (
+              <button
+                key={name}
+                className={tab === name ? "active" : ""}
+                onClick={() => {
+                  setTab(name);
+                  setPreview(null);
+                }}
+              >
+                <span aria-hidden>
+                  {["◫", "▤", "T", "◈", "▧", "◉", "↗", "⌁", "⚙"][i]}
+                </span>
+                {name}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-bottom">
+            <a
+              href="https://mxd.digital-world-9896a4.workers.dev/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open website ↗
+            </a>
+            {cloudflare ? (
+              <form action="/logout" method="POST">
+                <button type="submit">Sign out</button>
+              </form>
+            ) : (
+              <a href="/signout-with-chatgpt?return_to=/admin" target="_top">
+                Sign out
+              </a>
+            )}
+          </div>
+        </aside>
+        <div className="admin-main">
+          <header className="admin-top">
+            <div>
+              <span className="status-dot" />
+              <output aria-live="polite">
+                {status}
+                {dirty ? " · draft" : ""}
+              </output>
+            </div>
+            <div className="toolbar">
+              <button
+                aria-label="Undo"
+                disabled={!history.current.length}
+                onClick={() => travel(true)}
+              >
+                ↶
+              </button>
+              <button
+                aria-label="Redo"
+                disabled={!future.current.length}
+                onClick={() => travel(false)}
+              >
+                ↷
+              </button>
+              <button onClick={() => setTab("Versions")}>History</button>
+              <button onClick={() => setPreview(preview ? null : doc)}>
+                {preview ? "Editor" : "Preview"}
+              </button>
+              <button disabled={busy} onClick={() => save()}>
+                Save draft
+              </button>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => save("publish")}
+              >
+                Publish ↗
+              </button>
+            </div>
+          </header>
+          <div className="admin-content">
+            <div className="page-heading">
+              <div>
+                <span className="workspace-label">MXD</span>
+                <h1>{preview ? "Preview" : tab}</h1>
+              </div>
+              <span className="draft-pill">v{version.current}</span>
+            </div>
+            {conflict.current && (
+              <div role="alert" className="admin-panel">
+                <p>
+                  Another session changed this draft. Export your edits before
+                  reloading.
+                </p>
+                <button onClick={() => download("mxd-unsaved.json", doc)}>
+                  Export local edits
+                </button>
+                <button
+                  onClick={() => refresh().catch((e) => setStatus(e.message))}
+                >
+                  Reload server draft
+                </button>
+              </div>
+            )}
+            {preview ? (
+              <>
+                <div className="toolbar">
+                  {["100%", "768px", "390px"].map((w) => (
+                    <button key={w} onClick={() => setWidth(w)}>
+                      {w === "100%"
+                        ? "Desktop"
+                        : w === "768px"
+                          ? "Tablet"
+                          : "Mobile"}
+                    </button>
+                  ))}
+                  <button onClick={() => setPreview(doc)}>
+                    Preview current draft
+                  </button>
+                </div>
+                <PreviewFrame document={preview} width={width} pageId={page} />
+              </>
+            ) : tab === "Overview" ? (
+              <OverviewPanel />
+            ) : tab === "Pages" ? (
+              <PagesPanel />
+            ) : tab === "Text & Labels" ? (
+              <TextsPanel />
+            ) : tab === "Design" ? (
+              <DesignPanel />
+            ) : tab === "Media" ? (
+              <MediaPanel />
+            ) : tab === "Courses" ? (
+              <CoursesPanel />
+            ) : tab === "Enrollments" ? (
+              <EnrollmentsPanel />
+            ) : tab === "Analytics" ? (
+              <AnalyticsPanel />
+            ) : tab === "Versions" ? (
+              <VersionsPanel />
+            ) : (
+              <SettingsPanel />
+            )}
+          </div>
+        </div>
+      </div>
+    </EditorContext>
+  );
+}
