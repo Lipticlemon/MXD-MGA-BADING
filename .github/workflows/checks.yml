@@ -1,0 +1,19 @@
+name: MXD checks
+on:
+  push:
+    branches: [main, feat/mxd-foundation]
+  pull_request:
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm test
+      - run: npm run build
+      - run: node --check worker/index.js
+      - run: node --check apps/admin-panel/main.js
+      - run: node --check apps/mxd-web/main.js
+      - run: test -f public/site/index.html && test -f public/admin/index.html

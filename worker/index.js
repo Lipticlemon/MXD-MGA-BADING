@@ -130,7 +130,7 @@ export default {async fetch(request,env){
     if(onAdminHost || adminPath){
       if(!await authorized(request,env))return new Response("ADMIN PANEL requires authorized Cloudflare Access",{status:403,headers:{"content-type":"text/plain"}});
       const file=onAdminHost?(path==="/" ?"/admin/index.html":path):path==="/admin"?"/admin/index.html":path==="/admin/"?"/admin/index.html":path;
-      const rewritten=file.startsWith("/admin/")?file:"/admin"+file;
+      const rewritten=file.startsWith("/shared/")?file:file.startsWith("/admin/")?file:"/admin"+file;
       const resp=await serveAsset(request,env,rewritten);
       return new Response(resp.body,{status:resp.status,headers:secure(new Headers(resp.headers))});
     }
