@@ -1,0 +1,19 @@
+import { z } from 'zod';
+const textId=z.string().regex(/^text[1-9]\d*$/);
+export const safeUrl=z.string().max(2048).refine(v=>!v||/^#[a-zA-Z0-9_-]+$/.test(v)||/^\/api\/media\/[a-zA-Z0-9-]+$/.test(v)||(/^https:\/\//.test(v)&&(()=>{try{return !new URL(v).username&&!new URL(v).password}catch{return false}})()),'Use HTTPS, a section anchor, or uploaded media');
+const item=z.object({id:z.string().max(100),title:textId,body:textId,label:textId,url:safeUrl,media:safeUrl,alt:textId,price:z.number().min(0).max(100000000).nullable(),visible:z.boolean()});
+export const section=z.object({id:z.string().regex(/^[a-zA-Z0-9_-]+$/),type:z.enum(['hero','benefits','courses','curriculum','instructor','resources','testimonials','pricing','community','faq','cta']),title:textId,body:textId,label:textId,url:safeUrl,visible:z.boolean(),layout:z.enum(['split','center','grid','list']),padding:z.number().min(16).max(200),columns:z.number().int().min(1).max(4),items:z.array(item).max(100)});
+export const themeSchema=z.object({background:z.string().regex(/^#[0-9a-fA-F]{6}$/),surface:z.string().regex(/^#[0-9a-fA-F]{6}$/),accent:z.string().regex(/^#[0-9a-fA-F]{6}$/),text:z.string().regex(/^#[0-9a-fA-F]{6}$/),muted:z.string().regex(/^#[0-9a-fA-F]{6}$/),border:z.string().regex(/^#[0-9a-fA-F]{6}$/),radius:z.number().min(0).max(40),width:z.number().min(800).max(1600),font:z.enum(['Inter','Georgia','system-ui']),scale:z.number().min(.8).max(1.4),motion:z.boolean()});
+export const contentSchema=z.object({texts:z.record(textId,z.string().max(10000)),theme:themeSchema,brand:textId,footer:textId,nav:z.array(z.object({id:z.string(),label:textId,url:safeUrl})).max(30),sections:z.array(section).max(60),maintenance:z.object({enabled:z.boolean(),title:textId,body:textId,reopen:z.string().max(40)}),seo:z.object({title:textId,description:textId}),presets:z.array(z.object({id:z.string(),name:z.string().min(1).max(80),theme:themeSchema})).max(30)}).superRefine((d,ctx)=>{
+ const refs=[d.brand,d.footer,d.seo.title,d.seo.description,d.maintenance.title,d.maintenance.body,...d.nav.map(n=>n.label),...d.sections.flatMap(s=>[s.title,s.body,s.label,...s.items.flatMap(i=>[i.title,i.body,i.label,i.alt])])];
+ if(refs.some(r=>!(r in d.texts)))ctx.addIssue({code:'custom',message:'Missing text reference'});
+ if(new Set(d.sections.map(s=>s.id)).size!==d.sections.length)ctx.addIssue({code:'custom',message:'Duplicate section ID'});
+});
+export type Content=z.infer<typeof contentSchema>;
+export function initialContent():Content{
+ const texts:Record<string,string>={};let n=0;const t=()=>{const id=`text${++n}`;texts[id]=id;return id};
+ const brand=t(),nav=['courses','curriculum','pricing','faq'].map(id=>({id,label:t(),url:`#${id}`}));
+ const sections:Content['sections']=['hero','benefits','courses','curriculum','instructor','resources','testimonials','pricing','community','faq','cta'].map((type,index)=>({id:type,type:type as Content['sections'][number]['type'],title:t(),body:t(),label:t(),url:type==='hero'?'#courses':'#pricing',visible:!['testimonials','instructor','resources','community'].includes(type),layout:type==='hero'?'split':type==='faq'||type==='curriculum'?'list':'grid',padding:96,columns:3,items:Array.from({length:['hero','cta'].includes(type)?0:3},(_,i)=>({id:`${type}-${i}`,title:t(),body:t(),label:t(),url:'#pricing',media:'',alt:t(),price:null,visible:true}))}));
+ return {texts,brand,nav,sections,footer:t(),theme:{background:'#0D0A18',surface:'#151024',accent:'#7C3AED',text:'#F8F7FC',muted:'#ADA5BD',border:'#302741',radius:18,width:1200,font:'Inter',scale:1,motion:true},maintenance:{enabled:false,title:t(),body:t(),reopen:''},seo:{title:t(),description:t()},presets:[]};
+}
+export function newText(d:Content){const n=Math.max(0,...Object.keys(d.texts).map(k=>Number(k.slice(4))))+1;const id=`text${n}`;d.texts[id]=id;return id}
