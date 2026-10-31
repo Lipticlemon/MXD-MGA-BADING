@@ -47,7 +47,7 @@ Use Stripe test mode first. Check that checkout uses the server price, a signed 
 
 ## Backups and restoration
 
-The admin Worker runs `0 18 * * *` (02:00 Asia/Manila daily), creating a consistent D1 snapshot in the private R2 `backups/` prefix. Settings provides manual creation, paginated listing and authenticated download. Backups exclude access keys, session cookies and session records. Revisions, media metadata, enrollment records and audit history are included. Media objects are retained at immutable keys in the same bucket; the JSON snapshot does not duplicate their bytes. Backups are retained until the owner removes them.
+The admin Worker runs `0 18 * * *` (02:00 Asia/Manila daily), purging analytics beyond the published retention setting and expired sessions/login counters, then creating a consistent D1 snapshot in the private R2 `backups/` prefix. Settings provides manual creation, paginated listing and authenticated download. Backups exclude access keys, session cookies and session records. Revisions, media metadata, enrollment records, webhook deduplication IDs and audit history are included. Media objects are retained at immutable keys in the same bucket; the JSON snapshot does not duplicate their bytes. Backups are retained until the owner removes them.
 
 For a content mistake, use History to preview and restore a revision to the draft, then review and publish. For an unpublished change, discard the draft. For a removed media item, restore it from Media trash; replacement history creates a new immutable asset.
 

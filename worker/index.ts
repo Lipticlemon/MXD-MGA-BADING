@@ -1,4 +1,4 @@
-import { createBackup } from "../lib/backup";
+import { createBackup, maintainRecords } from "../lib/backup";
 import { cloudflareGate } from "../lib/cloudflare-auth";
 import handler from "vinext/server/fetch-handler";
 import { runWithConnectorBinding } from "../lib/connector-context";
@@ -10,7 +10,8 @@ const worker = {
     env: Cloudflare.Env,
     ctx: ExecutionContext,
   ) {
-    if (env.MODE === "admin") ctx.waitUntil(createBackup(env));
+    if (env.MODE === "admin" && env.DB)
+      ctx.waitUntil(maintainRecords(env.DB).then(() => createBackup(env)));
   },
   async fetch(
     request: Request,
