@@ -13,11 +13,11 @@ A midnight-purple public renderer and ADMIN PANEL built with React, TypeScript, 
 - PNG/JPEG/WebP uploads stored in R2, with reusable media URLs. Media is retained for revision recovery.
 - Server input validation, parameterized SQL, optimistic concurrency and atomic snapshot/content writes.
 
-## Hosting and authorization boundary
+## Production hosting and authorization
 
-The initial deployment is an **owner-private Sites application**. Sites owns sign-in and secure sessions. Admin pages and APIs require platform identity, while owner-only access is enforced by the Sites audience. The app must remain owner-private: an authenticated visitor is not independently checked against a role/membership table. Do not switch this deployment to public sharing.
+MXD now has independent Cloudflare Workers deployments for the website and ADMIN PANEL, sharing D1 and R2. See [deploy/README.md](deploy/README.md) for live addresses and operations.
 
-This implementation uses one deployment with two route surfaces. It does **not yet meet the specification's separate public and admin frontend deployment requirement**. Public launch requires separate deployments plus explicit owner authorization, origin/CORS configuration, and the target domain. No domain ownership is assumed.
+The admin uses a generated high-entropy access key with expiring server-side sessions, logout revocation and login attempt limits. API membership checks fail closed. The public Worker rejects all administrative routes and mutations. Direct requests cannot forge the internal platform identity headers. The earlier owner-private Sites deployment remains an independent preview with its own database; it is not the Cloudflare production data source.
 
 ## Development
 
@@ -48,10 +48,10 @@ Export content from Versions or Settings. Import validates the entire document a
 
 ## Verification
 
-Seven automated tests cover sequential text IDs, unsafe URLs, invalid references, duplicate sections, unsafe theme values, draft/published isolation, persistent restore, stale-writer rejection, and atomic rollback on failed database writes. TypeScript checks and the production build pass. The public page was inspected in managed browser preview. Local admin sign-in was unavailable, so authenticated browser workflow verification remains pending until hosted sign-in is available.
+Eleven automated tests cover sequential text IDs, unsafe URLs, invalid references, duplicate sections, unsafe theme values, draft/published isolation, persistent restore, stale-writer rejection, and atomic rollback on failed database writes. TypeScript checks and the production build pass. The public page was inspected in managed browser preview. The Cloudflare public page and separate admin login were verified in the browser. Authentication is tested with SQLite-backed integration fixtures. Live API checks also verified sign-in, draft isolation, publishing to the public host, restoration, republication, and logout revocation.
 
 ## Remaining specification work
 
-This is an initial functional implementation, not the complete 32-section specification. Still pending: separate frontend deployments; explicit owner/roles authorization for public hosting; page-level drag-and-drop; nested course modules/lessons; arbitrary component style/responsive overrides; video/audio uploads; enrollment/payment integrations; promotions/countdowns; banners/popups; analytics; richer media management; full SEO/social/sitemap controls; managed backups; rate limits and CSP hardening; mobile/accessibility and authenticated end-to-end browser coverage.
+This is an initial functional implementation, not the complete 32-section specification. Still pending: multi-admin roles and permissions; page-level drag-and-drop; nested course modules/lessons; arbitrary component style/responsive overrides; video/audio uploads; enrollment/payment integrations; promotions/countdowns; banners/popups; analytics; richer media management; full SEO/social/sitemap controls; managed backups; broader rate limits and CSP hardening; mobile/accessibility and authenticated end-to-end browser coverage.
 
 Do not treat these as completed features or expose the admin to the public before authorization is extended.

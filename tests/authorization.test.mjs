@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {isOwner} from '../lib/authorization.ts';
+test('owner authorization fails closed and rejects other signed-in visitors',()=>{assert.equal(isOwner(null,'owner@example.test'),false);assert.equal(isOwner({email:'owner@example.test'},undefined),false);assert.equal(isOwner({email:'someone@example.test'},'owner@example.test'),false);assert.equal(isOwner({email:'OWNER@example.test'},'owner@example.test'),true)});
